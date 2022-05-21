@@ -1,7 +1,8 @@
 from aiogram.types import Message, ReplyKeyboardRemove, CallbackQuery, LabeledPrice, PreCheckoutQuery, ContentType
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text, Command, state
-from keyboards import *
+# from keyboards import *
+import config
 import services
 from main import dp
 
@@ -37,9 +38,9 @@ async def sey_hello(message: Message):
 
 
 # Reply Кнопки для опроса
-@dp.message_handler(Command('shop'))
-async def show_shop(message: Message):
-    await message.answer('Shop', reply_markup=keyboard)
+# @dp.message_handler(Command('shop'))
+# async def show_shop(message: Message):
+#     await message.answer('Shop', reply_markup=keyboard)
 
 
 @dp.message_handler(Text(equals=['Кнопка 1', 'Кнопка 2', 'Кнопка 3']))
