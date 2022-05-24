@@ -108,11 +108,8 @@ async def get_product(call: CallbackQuery):
     await call.answer(cache_time=60)
     product_pk = call.data.replace('show_product', '')
     kb_show_product, result_str, url_photo = await services.get_product_info(product_pk)
-    await call.message.answer(f'{url_photo}\n{result_str}', reply_markup=kb_show_product)
-
-
-# @dp.callback_query_handler(lambda cq: 'back_to_category' in cq.data)
-# async def get_
+    # await call.message.answer(f'{url_photo}\n{result_str}', reply_markup=kb_show_product)
+    await call.bot.send_photo(call.message.chat.id, url_photo, result_str, reply_markup=kb_show_product)
 
 
 # Начало диалога добавления товара в Корзину
