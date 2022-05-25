@@ -52,7 +52,7 @@ async def get_goods(message: Message):
 
 @dp.message_handler(Command(['start', 'help']))
 async def start_message(message: Message):
-    await message.answer(text='Добро пожаловать в магазин Барахло Шоп!',
+    await message.answer(text='Добро пожаловать в Маркет Скидок!',
                          reply_markup=await services.get_start_menu())
 
 
@@ -108,7 +108,6 @@ async def get_product(call: CallbackQuery):
     await call.answer(cache_time=60)
     product_pk = call.data.replace('show_product', '')
     kb_show_product, result_str, url_photo = await services.get_product_info(product_pk)
-    # await call.message.answer(f'{url_photo}\n{result_str}', reply_markup=kb_show_product)
     await call.bot.send_photo(call.message.chat.id, url_photo, result_str, reply_markup=kb_show_product)
 
 
