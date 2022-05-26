@@ -105,6 +105,7 @@ async def getCartProducts(session: aiohttp.ClientSession, cart_pk: int, id_messe
     return product_carts
 
 
+# получает товары в Заказе (product_to_cart - общая таблица как для строк корзины так и для строк заказов)
 async def getOrderProducts(session: aiohttp.ClientSession, order_pk: str) -> list:
     product_order = []
     params_get = {'order': order_pk}
@@ -173,7 +174,7 @@ async def get_start_menu() -> ReplyKeyboardMarkup:
     kb_menu_btn_select = KeyboardButton(text='/📦Товары')
     kb_menu_btn_cart = KeyboardButton(text='/🛒Корзина')
     kb_menu_btn_order = KeyboardButton(text='/🧾Заказ')
-    kb_menu_btn_order_list = KeyboardButton(text='/💼История_заказов')
+    kb_menu_btn_order_list = KeyboardButton(text='/💼Ваши_заказы')
     kb_start.add(kb_menu_btn_select)
     kb_start.insert(kb_menu_btn_cart)
     kb_start.insert(kb_menu_btn_order)
@@ -292,12 +293,12 @@ async def get_product_info(product_pk: str) -> tuple:
         url_photo = product_info.get('photo', '')
         price = product_info.get('price', 0.00)
         stock_products = product_info.get('get_stock_product', [])
-        result_str = ''
+        info_str = f"{product_info.get('name', '')}\n----------\nналичие:\n"
 
         for stock in stock_products:
-            result_str += f"{stock['warehouse']['city']} - {stock['stock'].split('.')[0]} шт.\n"
+            info_str += f"{stock['warehouse']['city']} - {stock['stock'].split('.')[0]} шт.\n"
 
-        result_str += f'Цена: {price}'
+        info_str += f'Цена: {price}₽'
 
         kb_product = InlineKeyboardMarkup(row_width=1)
         new_button = InlineKeyboardButton(
@@ -306,7 +307,7 @@ async def get_product_info(product_pk: str) -> tuple:
         )
         kb_product.add(new_button)
 
-    return kb_product, result_str, url_photo
+    return kb_product, info_str, url_photo
 
 
 # выводим кнопку с подтверждением добавления товара в корзину и заодно пробрасываем его pk
@@ -361,20 +362,20 @@ async def get_cart(id_messenger: int) -> dict:
 
         for product in products_in_cart:
             cart_products['amount_cart'] += float(product['amount'])
-            product_info = f"<strong>{product['product']['name']}</strong>\nКоличество: {product['quantity'].split('.')[0]}\nСумма: {product['amount']}"
+            product_info = f"<strong>{product['product']['name']}</strong>\nКоличество: {product['quantity'].split('.')[0]}\nСумма: {product['amount']}₽"
 
             kb_cart = InlineKeyboardMarkup(row_width=2)
 
-            delete_button = InlineKeyboardButton(
-                text='🚽 Удалить',
-                callback_data=f"delete_product_from_cart{product['product']['pk']}"
-            )
             info_button = InlineKeyboardButton(
                 text='📦 О товаре',
                 callback_data=f"show_product{product['product']['pk']}"
             )
+            delete_button = InlineKeyboardButton(
+                text='🚽 Удалить',
+                callback_data=f"delete_product_from_cart{product['product']['pk']}"
+            )
 
-            kb_cart.add(delete_button).insert(info_button)
+            kb_cart.add(info_button).insert(delete_button)
 
             cart_products[product_info] = kb_cart
 
@@ -391,8 +392,9 @@ async def add_product_to_cart(product_cart_new: dict) -> None:
         cart_info = await getCartForUser(session, user_pk)
         cart_pk = cart_info.get('pk', 0)
         # Теперь заполним данные о строке товара в корзине
-        body_request = {'id_messenger': '', 'quantity': 0.0, 'price': 0.0, 'discount': 0.0,
-                        'amount': 0.0, 'user': 0, 'cart': 0, 'product': 0, 'warehouse': '0'}
+        body_request = {}
+        # body_request = {'id_messenger': '', 'quantity': 0.0, 'price': 0.0, 'discount': 0.0,
+        #                 'amount': 0.0, 'user': 0, 'cart': 0, 'product': 0, 'warehouse': '0'}
 
         body_request['id_messenger'] = product_cart_new['id_messenger']
         body_request['quantity'] = float(product_cart_new['quantity'])
@@ -416,8 +418,7 @@ async def add_product_to_cart(product_cart_new: dict) -> None:
         # если нашли строку в корзине с этим же товаром, пересчитаем количество и сумму, если нет, добавим новую строку
         if exists_product_cart:
             body_request_update = {}
-            body_request_update['quantity'] = body_request['quantity'] + float(
-                exists_product_cart['quantity'])
+            body_request_update['quantity'] = body_request['quantity'] + float(exists_product_cart['quantity'])
 
             amount = body_request['price'] * body_request_update['quantity']
             discount = amount / 100 * body_request['discount_percentage']
@@ -495,10 +496,19 @@ async def create_order(order_info: dict) -> dict:
             order_info['discount'] += float(product_cart['discount'])
             order_info['amount'] += float(product_cart['amount'])
 
+        # Теперь изменю общие данные корзины после удаления строк товара из корзины для заказа
+        body_request_cart = {
+            'quantity': float(cart_info.get('quantity', 0.0)) - order_info['quantity'],
+            'amount': float(cart_info.get('amount', 0.0)) - order_info['amount'],
+            'discount': float(cart_info.get('discount', 0.0)) - order_info['discount'],
+        }
+
+        async with session.patch(f'{config.ADDR_SERV}/api/v1/carts_update/{cart_pk}', json=body_request_cart):
+            pass
+
         # сначала создаю Заказ и получаю его id, к нему еще не будут привязаны строки заказа, затем делаю обновление строк корзины,
         # куда записываю id заказа, а id корзины ставлю null, получается рокировка заказа с корзиной
         # так строки корзины становятся строками заказа
-
         async with session.post(f'{config.ADDR_SERV}/api/v1/orders_create', json=order_info) as resp:
             if resp.ok:
                 new_order = await resp.json()
@@ -518,63 +528,124 @@ async def create_order(order_info: dict) -> dict:
     return order_info
 
 
-# получим список заказов покупателя
-async def get_order_list(id_messenger: int) -> InlineKeyboardMarkup:
-    kb_orders = InlineKeyboardMarkup(row_width=1)
+# Добавляет товары из корзины к существующему заказу
+async def add_products_from_cart_to_order(order_info: dict) -> dict:
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        user_pk = order_info.get('user', 0)
+        cart_info = await getCartForUser(session, user_pk)
+        cart_pk = cart_info.get('pk', 0)
+        id_messenger = order_info.get('id_messenger', 0)
+        products_in_cart = await getCartProducts(session, cart_pk, id_messenger)
+
+        order_info['quantity'] = float(order_info['quantity'])
+        order_info['discount'] = float(order_info['discount'])
+        order_info['amount'] = float(order_info['amount'])
+
+        for product_cart in products_in_cart:
+            order_info['quantity'] += float(product_cart['quantity'])
+            order_info['discount'] += float(product_cart['discount'])
+            order_info['amount'] += float(product_cart['amount'])
+
+         # Изменю общие данные корзины после удаления строк товара из корзины для заказа
+        body_request_cart = {
+            'quantity': float(cart_info.get('quantity', 0.0)) - order_info['quantity'],
+            'amount': float(cart_info.get('amount', 0.0)) - order_info['amount'],
+            'discount': float(cart_info.get('discount', 0.0)) - order_info['discount'],
+        }
+
+        async with session.patch(f'{config.ADDR_SERV}/api/v1/carts_update/{cart_pk}', json=body_request_cart):
+            pass
+
+        # Изменю и сам заказ
+        order_pk = order_info.get('id', 0)
+        order_info['status'] = 1
+        order_info.pop('delivery_type')
+        order_info.pop('payment_type')
+
+        async with session.patch(f'{config.ADDR_SERV}/api/v1/orders_update/{order_pk}', json=order_info) as resp:
+            if resp.ok:
+                body_request_update = {
+                    'order': order_pk,
+                    'cart': '',
+                    'phone': order_info.get('phone', ''),
+                }
+
+                for product_cart in products_in_cart:
+                    product_cart_pk = product_cart.get('id', 0)
+
+                    async with session.patch(f'{config.ADDR_SERV}/api/v1/carts/product_to_cart_update/{product_cart_pk}', json=body_request_update):
+                        pass
+
+
+    return order_info
+
+
+# Получу заказы привязанные к id_messenger
+async def get_orders_for_messenger(id_messenger: int, paid: int) -> list:
+    orders = []
 
     async with aiohttp.ClientSession(headers=HEADERS) as session:
-        params_get = {'id_messenger': id_messenger}
+        params_get = {'id_messenger': id_messenger, 'paid': paid}
 
         async with session.get(f'{config.ADDR_SERV}/api/v1/orders', params=params_get) as resp:
             if resp.ok:
                 orders = await resp.json()
 
-                for order in orders:
-                    date_order = datetime.strptime(
-                        order['time_update'],
-                        '%Y-%m-%dT%H:%M:%S.%f%z'
-                    ).strftime('%d.%m.%Y')
-                    text_order = f"Заказ №{order['id']} от {date_order} статус: {order['status']['repr']}\n"
-                    order_pk = order.get('id', 0)
+    return orders
 
-                    new_button = InlineKeyboardButton(
-                        text=text_order,
-                        callback_data=f'order_pk{order_pk}'
-                    )
 
-                    kb_orders.add(new_button)
+# получим список заказов покупателя в виде кнопок InlineKeyboardMarkup
+async def get_kb_order_list(id_messenger: int, paid: int) -> InlineKeyboardMarkup:
+    kb_orders = InlineKeyboardMarkup(row_width=1)
 
-                button_cancel = InlineKeyboardButton(
-                    text='Отмена', callback_data='cancel'
-                )
-                kb_orders.add(button_cancel)
+    orders = await get_orders_for_messenger(id_messenger, paid)
+
+    for order in orders:
+        paid_text = 'оплачен' if order['paid'] else 'неоплачен'
+        date_order = datetime.strptime(
+            order['time_update'], '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%d.%m.%Y')
+        text_order = f"Заказ №{order['id']} от {date_order} статус: {paid_text}"
+        order_pk = order.get('id', 0)
+
+        new_button = InlineKeyboardButton(
+            text=text_order,
+            callback_data=f'order_pk{order_pk}'
+        )
+
+        kb_orders.add(new_button)
+
+    button_cancel = InlineKeyboardButton(
+        text='Отмена', callback_data='cancel'
+    )
+    kb_orders.add(button_cancel)
 
     return kb_orders
 
 
-# возвращает данные о товарах в заказе в виде словаря, где ключем является строка с данными о товаре,
+# возвращает данные о товарах в заказе в виде словаря, где ключом является строка с данными о товаре,
 # а значением кнопка действия с этим товаром(например "Удалить") и данные о самом заказе в виде словаря
-async def get_order(order_pk: str) -> tuple:
+async def get_order(order_pk: str, paid: int) -> tuple:
     order_info = {}
     order_products = {}
 
     async with aiohttp.ClientSession(headers=HEADERS) as session:
-        params_get = {'pk': order_pk}
+        params_get = {'pk': order_pk, 'paid': paid}
 
         async with session.get(f'{config.ADDR_SERV}/api/v1/orders', params=params_get) as resp:
             if resp.ok:
                 orders_list = await resp.json()
-                order_info = orders_list[0]
-                date_order = datetime.strptime(
-                    order_info['time_update'],
-                    '%Y-%m-%dT%H:%M:%S.%f%z'
-                ).strftime('%d.%m.%Y')
-                order_info['order'] = f"<strong>Заказ №{order_info['id']} от {date_order}\n</strong>"
+
+                if orders_list:
+                    order_info = orders_list[0]
+                    date_order = datetime.strptime(order_info['time_update'], '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%d.%m.%Y')
+                    order_info['order'] = f"<strong>Заказ №{order_info['id']} от {date_order}\n</strong>"
+                else:
+                    return order_products, order_info
 
         products_in_order = await getOrderProducts(session, order_pk)
 
         for product in products_in_order:
-            product_info = f"{product['product']['name']}\nКоличество: {product['quantity'].split('.')[0]} на сумму: {product['amount']}"
+            product_info = f"<strong>{product['product']['name']}</strong>\nКоличество: {product['quantity'].split('.')[0]} на сумму: {product['amount']}₽"
 
             kb_cart = InlineKeyboardMarkup(row_width=2)
             info_button = InlineKeyboardButton(
@@ -582,7 +653,7 @@ async def get_order(order_pk: str) -> tuple:
                 callback_data=f"show_product{product['product']['pk']}"
             )
             delete_button = InlineKeyboardButton(
-                text='🚽 Удалить товар',
+                text='🚽 Удалить',
                 callback_data=f"delete_product_from_order{product['product']['pk']}:{order_pk}"
             )
 
@@ -596,11 +667,32 @@ async def get_order(order_pk: str) -> tuple:
     return order_products, order_info
 
 
+# Проверяет достаточно ли товара для отгрузки
+# difference_info - словарь Наименование товара:Разница остатков, если пустой, то всего хватает
+async def check_stock_in_order(order_pk: str) -> dict:
+    difference_info = {}
+
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        products_in_order = await getOrderProducts(session, order_pk)
+
+        for product_oder in products_in_order:
+            warehouse_order = product_oder['warehouse']['pk']
+            product_stocks = product_oder['product']['get_stock_product']
+
+            for product_stock in product_stocks:
+                quantity_difference = product_stock['stock'] - product_oder['quantity']
+
+                if product_stock['warehouse']['pk'] == warehouse_order and quantity_difference < 0:
+                    difference_info[product_oder['product']['name']] == -quantity_difference
+
+    return difference_info
+
+
 # удаляет товар из корзины или заказа, так как строки принадлежат и корзинам и заказам
 async def delete_product_from_order(product_cart_info: dict) -> None:
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         order_pk = product_cart_info['order_pk']
-        order_products, order_info = await get_order(order_pk)
+        _, order_info = await get_order(order_pk, 0)
 
         # получим pk удаляемой строки
         product_order = await getCartProduct(session, order_pk, product_cart_info['product_pk'], product_cart_info['id_messenger'], True)

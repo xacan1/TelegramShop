@@ -76,7 +76,7 @@ async def show_cart(message: Message):
         if product != 'amount_cart':
             await message.answer(product, reply_markup=cart_info[product])
 
-    await message.answer(f'Общая сумма товаров: {cart_info["amount_cart"]:10.2f}')
+    await message.answer(f'Общая сумма товаров: {cart_info["amount_cart"]:10.2f}₽')
 
 
 @dp.callback_query_handler(text_contains='cancel')
@@ -107,8 +107,8 @@ async def get_product_list(call: CallbackQuery):
 async def get_product(call: CallbackQuery):
     await call.answer(cache_time=60)
     product_pk = call.data.replace('show_product', '')
-    kb_show_product, result_str, url_photo = await services.get_product_info(product_pk)
-    await call.bot.send_photo(call.message.chat.id, url_photo, result_str, reply_markup=kb_show_product)
+    kb_show_product, info_str, url_photo = await services.get_product_info(product_pk)
+    await call.bot.send_photo(call.message.chat.id, url_photo, info_str, reply_markup=kb_show_product)
 
 
 # Начало диалога добавления товара в Корзину
@@ -220,7 +220,7 @@ async def ask_about_create_order(message: Message):
     cart_empty = await services.checkCart(message.from_user.id)
 
     if cart_empty:
-        await message.answer('Ваша корзина пуста, для создания заказа нужно добавить в корзину товары')
+        await message.answer('Ваша корзина пуста, для создания заказа или добавления товара к существующему заказу, нужно добавить в корзину товар')
         return
 
     await FSMOrder.ask_about_create_order.set()
@@ -232,6 +232,28 @@ async def add_product(call: CallbackQuery, state: FSMContext):
     answer = call.data.replace('answer_yes_no', '')
 
     if answer == '1':
+        # если есть неоплаченный заказ в БД, добавлю товар к нему вместо оформления нового заказа
+        id_messenger = call.from_user.id
+        orders = await services.get_orders_for_messenger(id_messenger, 0)
+
+        if orders:
+            order_info = await services.add_products_from_cart_to_order(orders[0])
+            prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
+            await call.message.answer('Существующий заказ обновлен и его можно оплатить, ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+            await call.bot.send_invoice(
+                chat_id=id_messenger,
+                title='Заказ',
+                description='Покупка товаров в магазине',
+                payload=f"order_pk{order_info['id']}",
+                provider_token=config.PROVIDER_TOKEN,
+                currency='RUB',
+                prices=prices,
+                start_parameter='test',
+            )
+            await state.finish()
+            return
+        # ****************************************************************************************
+
         await FSMOrder.next()
         await call.message.answer('Укажите имя:', reply_markup=ReplyKeyboardRemove())
     else:
@@ -281,16 +303,16 @@ async def get_comment(call: CallbackQuery, state: FSMContext):
         async with state.proxy() as data:
             order_info = {**data}
             await call.message.answer('Спасибо за Ваш заказ! Оплатите и ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
-            # order_info = await services.create_order(order_info)
-            # prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
-            order_info['id'] = 0
-            prices = [LabeledPrice('Руб', 99900), ]
+            order_info = await services.create_order(order_info)
+            prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
+            # order_info['id'] = 0
+            # prices = [LabeledPrice('Руб', 99900), ]
 
             await call.bot.send_invoice(
                 chat_id=call.message.chat.id,
                 title='Заказ',
                 description='Покупка товаров в магазине',
-                payload=f"order №{order_info['id']}",
+                payload=f"order_pk{order_info['id']}",
                 provider_token=config.PROVIDER_TOKEN,
                 currency='RUB',
                 prices=prices,
@@ -300,10 +322,14 @@ async def get_comment(call: CallbackQuery, state: FSMContext):
         await state.finish()
 
 
-# Подтверждат что товар есть на складе для проведения платежа
+# Проверяе наличие товара на складе для проведения платежа по номеру транзакии pre_checkout_query.id
 @dp.pre_checkout_query_handler()
 async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
-    await pre_checkout_query.bot.answer_pre_checkout_query(pre_checkout_query.id, True)
+    # если check_info пуст, то все ОК, иначе в словаре будет наименование и расхождение количества
+    order_pk = pre_checkout_query.invoice_payload.replace('order_pk', '')
+    check_info = await services.check_stock_in_order(order_pk)
+    confirm = False if check_info else True
+    await pre_checkout_query.bot.answer_pre_checkout_query(pre_checkout_query.id, confirm)
 
 
 # обработаем принятый платеж
@@ -321,7 +347,18 @@ async def input_comment(message: Message, state: FSMContext):
         data['comment'] = message.text
         order_info = {**data}
         await message.answer('Спасибо за Ваш заказ! Оплатите и ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
-        await services.create_order(order_info)
+        order_info = await services.create_order(order_info)
+        prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
+        await message.bot.send_invoice(
+            chat_id=message.chat.id,
+            title='Заказ',
+            description='Покупка товаров в магазине',
+            payload=f"order_pk{order_info['id']}",
+            provider_token=config.PROVIDER_TOKEN,
+            currency='RUB',
+            prices=prices,
+            start_parameter='test',
+        )
 
     await state.finish()
 
@@ -333,23 +370,28 @@ async def input_comment(message: Message, state: FSMContext):
 # **********************************************************************************************************************
 
 
-# Показать список заказов покупателя
-@dp.message_handler(Command('💼История_заказов'))
+# Показать список неоплаченных заказов покупателя
+@dp.message_handler(Command('💼Ваши_заказы'))
 async def get_order_list(message: Message):
-    kb_orders = await services.get_order_list(message.from_user.id)
+    kb_orders = await services.get_kb_order_list(message.from_user.id, 0)
 
-    if not kb_orders:
-        await message.answer('У Вас ещё не было заказов, но это легко исправить ;)')
+    # Если заказов не найдено, то в словаре будет всего одна кнопка Отмена
+    if len(kb_orders.values['inline_keyboard']) == 1:
+        await message.answer('Неоплаченных заказов нет')
         return
 
     await message.answer('Ваши заказы:', reply_markup=kb_orders)
 
 
-# Показать заказ покупателя
+# Показать неоплаченный заказ покупателя
 @dp.callback_query_handler(lambda cq: 'order_pk' in cq.data)
 async def get_order(call: CallbackQuery):
     order_pk = call.data.replace('order_pk', '')
-    order_products, order_info = await services.get_order(order_pk)
+    order_products, order_info = await services.get_order(order_pk, 0)
+
+    if not order_info:
+        await call.message.answer('Данный заказ уже оплачен')
+        return
 
     if not order_products:
         await call.message.answer('Заказ пуст')
@@ -357,7 +399,7 @@ async def get_order(call: CallbackQuery):
 
     if order_info:
         await call.message.answer(
-            f"{order_info['order']} на сумму {order_info['amount']}\nСтатус заказа: {order_info['status']['repr']}\nДоставка: {order_info['delivery_type']['repr']}\nТип оплаты: {order_info['payment_type']['repr']}\nТовары в заказе:"
+            f"{order_info['order']}на сумму {order_info['amount']}₽\nСтатус заказа: <i>{order_info['status']['repr']}</i>\nДоставка: <i>{order_info['delivery_type']['repr']}</i>\nТип оплаты: <i>{order_info['payment_type']['repr']}</i>\n<strong>Товары в заказе:</strong>"
         )
 
     for product in order_products:
