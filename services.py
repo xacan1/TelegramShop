@@ -675,15 +675,16 @@ async def check_stock_in_order(order_pk: str) -> dict:
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         products_in_order = await getOrderProducts(session, order_pk)
 
-        for product_oder in products_in_order:
-            warehouse_order = product_oder['warehouse']['pk']
-            product_stocks = product_oder['product']['get_stock_product']
+        for product_order in products_in_order:
+            order_quantity = float(product_order['quantity'])
+            warehouse_order = product_order['warehouse']['pk']
+            product_stocks = product_order['product']['get_stock_product']
 
             for product_stock in product_stocks:
-                quantity_difference = product_stock['stock'] - product_oder['quantity']
+                quantity_difference = float(product_stock['stock']) - order_quantity
 
                 if product_stock['warehouse']['pk'] == warehouse_order and quantity_difference < 0:
-                    difference_info[product_oder['product']['name']] == -quantity_difference
+                    difference_info[product_order['product']['name']] == -quantity_difference
 
     return difference_info
 
@@ -713,4 +714,11 @@ async def delete_product_from_order(product_cart_info: dict) -> None:
             body_request_cart['status'] = 5
 
         async with session.patch(f'{config.ADDR_SERV}/api/v1/orders_update/{order_pk}', json=body_request_cart):
+            pass
+
+
+async def set_order_payment(order_pk: str) -> None:
+    order_info = {'paid': 1}
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with session.patch(f'{config.ADDR_SERV}/api/v1/orders_update/{order_pk}', json=order_info):
             pass

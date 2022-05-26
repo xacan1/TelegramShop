@@ -239,7 +239,8 @@ async def add_product(call: CallbackQuery, state: FSMContext):
         if orders:
             order_info = await services.add_products_from_cart_to_order(orders[0])
             prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
-            await call.message.answer('Существующий заказ обновлен и его можно оплатить, ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+            await call.message.answer('Ваш заказ обновлён и его можно оплатить, ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+
             await call.bot.send_invoice(
                 chat_id=id_messenger,
                 title='Заказ',
@@ -305,8 +306,6 @@ async def get_comment(call: CallbackQuery, state: FSMContext):
             await call.message.answer('Спасибо за Ваш заказ! Оплатите и ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
             order_info = await services.create_order(order_info)
             prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
-            # order_info['id'] = 0
-            # prices = [LabeledPrice('Руб', 99900), ]
 
             await call.bot.send_invoice(
                 chat_id=call.message.chat.id,
@@ -322,7 +321,7 @@ async def get_comment(call: CallbackQuery, state: FSMContext):
         await state.finish()
 
 
-# Проверяе наличие товара на складе для проведения платежа по номеру транзакии pre_checkout_query.id
+# Проверяет наличие товара на складе для проведения платежа по номеру транзакии pre_checkout_query.id
 @dp.pre_checkout_query_handler()
 async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
     # если check_info пуст, то все ОК, иначе в словаре будет наименование и расхождение количества
@@ -335,7 +334,10 @@ async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
 # обработаем принятый платеж
 @dp.message_handler(content_types=ContentType.SUCCESSFUL_PAYMENT)
 async def process_pay(message: Message):
-    if 'order №' in message.successful_payment.invoice_payload:
+    if 'order_pk' in message.successful_payment.invoice_payload:
+        # Здесь нужно поменять признак в Заказе на Оплачен
+        order_pk = message.successful_payment.invoice_payload.replace('order_pk', '')
+        await services.set_order_payment(order_pk)
         await message.answer('Оплата прошла успешно!', reply_markup=await services.get_start_menu())
 
 
@@ -349,6 +351,7 @@ async def input_comment(message: Message, state: FSMContext):
         await message.answer('Спасибо за Ваш заказ! Оплатите и ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
         order_info = await services.create_order(order_info)
         prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
+
         await message.bot.send_invoice(
             chat_id=message.chat.id,
             title='Заказ',
