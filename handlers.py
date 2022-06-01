@@ -1,7 +1,6 @@
 from aiogram.types import Message, ReplyKeyboardRemove, CallbackQuery, LabeledPrice, PreCheckoutQuery, ContentType
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text, Command, state
-# from keyboards import *
 import config
 import services
 from main import dp
@@ -29,26 +28,6 @@ class FSMDeleteProductToCart(state.StatesGroup):
 class FSMDeleteProductFromOrder(state.StatesGroup):
     confirm_delete = state.State()
 
-
-# Реакция на текст в сообщении
-@dp.message_handler(Text('Привет'))
-async def sey_hello(message: Message):
-    username = message['from']['first_name'] if message.text else ''
-    await message.answer(f"{message.text} {username}, твой id={message['from']['id']}")
-
-
-# Reply Кнопки для опроса
-# @dp.message_handler(Command('shop'))
-# async def show_shop(message: Message):
-#     await message.answer('Shop', reply_markup=keyboard)
-
-
-@dp.message_handler(Text(equals=['Кнопка 1', 'Кнопка 2', 'Кнопка 3']))
-async def get_goods(message: Message):
-    await message.answer(f'Нажата: {message.text}', reply_markup=ReplyKeyboardRemove())
-
-
-# Рабочий магазин
 
 @dp.message_handler(Command(['start', 'help']))
 async def start_message(message: Message):
@@ -108,7 +87,11 @@ async def get_product(call: CallbackQuery):
     await call.answer(cache_time=60)
     product_pk = call.data.replace('show_product', '')
     kb_show_product, info_str, url_photo = await services.get_product_info(product_pk)
-    await call.bot.send_photo(call.message.chat.id, url_photo, info_str, reply_markup=kb_show_product)
+
+    if config.DEBUG_MODE:
+        await call.message.answer(text=f'{url_photo}\n{info_str}', reply_markup=kb_show_product)
+    else:
+        await call.bot.send_photo(call.message.chat.id, url_photo, info_str, reply_markup=kb_show_product)
 
 
 # Начало диалога добавления товара в Корзину
@@ -199,14 +182,12 @@ async def confirm_product(call: CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(lambda cq: 'answer_yes_no1' in cq.data, state=FSMDeleteProductToCart.confirm_delete)
 async def confirm_product(call: CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
-        product_cart_info = {
-            'product_pk': data['product_pk'],
-            'id_messenger': call.from_user.id
-        }
-
-    await services.delete_product_from_cart(product_cart_info)
+        data['id_messenger'] = call.from_user.id
+        product_cart_info = {**data}
+        await services.delete_product_from_cart(product_cart_info)
+        await call.message.answer('Товар удален из корзины', reply_markup=await services.get_start_menu())
+    
     await state.finish()
-    await call.message.answer('Товар удален из корзины', reply_markup=await services.get_start_menu())
 
 
 # Конец диалога удаления товара из корзины
@@ -217,10 +198,10 @@ async def confirm_product(call: CallbackQuery, state: FSMContext):
 # **************************************************************************************************************
 @dp.message_handler(Command('🧾Заказ'), state=None)
 async def ask_about_create_order(message: Message):
-    cart_empty = await services.checkCart(message.from_user.id)
+    cart_empty = await services.check_cart(message.from_user.id)
 
     if cart_empty:
-        await message.answer('Ваша корзина пуста, для создания заказа или добавления товара к существующему заказу, нужно добавить в корзину товар')
+        await message.answer('Ваша корзина пуста, для создания заказа или добавления товара к существующему заказу, нужно добавить в корзину товар.')
         return
 
     await FSMOrder.ask_about_create_order.set()
@@ -237,23 +218,21 @@ async def add_product(call: CallbackQuery, state: FSMContext):
         orders = await services.get_orders_for_messenger(id_messenger, 0)
 
         if orders:
-            order_info = await services.add_products_from_cart_to_order(orders[0])
-            prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
-            await call.message.answer('Ваш заказ обновлён и его можно оплатить, ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+            order_info = orders[0]
+            order_info['status_pk'] = 1
+            order_info = await services.create_or_update_order(order_info)
+            result_check = services.check_before_payment(order_info)
+            
+            if result_check:
+                await call.message.answer(result_check, reply_markup=await services.get_start_menu())
+                await state.finish()
+                return
 
-            await call.bot.send_invoice(
-                chat_id=id_messenger,
-                title='Заказ',
-                description='Покупка товаров в магазине',
-                payload=f"order_pk{order_info['id']}",
-                provider_token=config.PROVIDER_TOKEN,
-                currency='RUB',
-                prices=prices,
-                start_parameter='test',
-            )
+            await call.message.answer('Ваш существующий заказ обновлён и его можно оплатить.', reply_markup=await services.get_start_menu())
+            await order_payment(call.message, order_info, id_messenger)
             await state.finish()
             return
-        # ****************************************************************************************
+            # ****************************************************************************************
 
         await FSMOrder.next()
         await call.message.answer('Укажите имя:', reply_markup=ReplyKeyboardRemove())
@@ -279,7 +258,7 @@ async def input_last_name(message: Message, state: FSMContext):
         data['last_name'] = message.text
 
     await FSMOrder.next()
-    await message.answer('Отправьте свой номер нажатием на кнопку:', reply_markup=await services.get_contact_kb())
+    await message.answer('<strong>Отправьте свой номер нажатием на специальную кнопку внизу экрана</strong>', reply_markup=await services.get_contact_kb())
 
 
 # Ловим третий ответ
@@ -303,22 +282,33 @@ async def get_comment(call: CallbackQuery, state: FSMContext):
     else:
         async with state.proxy() as data:
             order_info = {**data}
-            await call.message.answer('Спасибо за Ваш заказ! Оплатите и ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
-            order_info = await services.create_order(order_info)
-            prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
+            order_info = await services.create_or_update_order(order_info)
+            result_check = services.check_before_payment(order_info)
+            
+            if result_check:
+                await call.message.answer(result_check, reply_markup=await services.get_start_menu())
+                await state.finish()
+                return
 
-            await call.bot.send_invoice(
-                chat_id=call.message.chat.id,
-                title='Заказ',
-                description='Покупка товаров в магазине',
-                payload=f"order_pk{order_info['id']}",
-                provider_token=config.PROVIDER_TOKEN,
-                currency='RUB',
-                prices=prices,
-                start_parameter='test',
-            )
+            await call.message.answer('Спасибо за Ваш заказ! Оплатите и ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+            await order_payment(call.message, order_info, call.message.chat.id)
 
         await state.finish()
+
+
+async def order_payment(message: Message, order_info: dict, chat_id: int) -> None:
+    prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
+
+    await message.bot.send_invoice(
+        chat_id=chat_id,
+        title='Заказ',
+        description='Покупка товаров в магазине',
+        payload=f"order_pk{order_info['id']}",
+        provider_token=config.PROVIDER_TOKEN,
+        currency='RUB',
+        prices=prices,
+        start_parameter='test',
+    )
 
 
 # Проверяет наличие товара на складе для проведения платежа по номеру транзакии pre_checkout_query.id
@@ -344,29 +334,21 @@ async def process_pay(message: Message):
 # Ловим последний ответ, если он есть
 @dp.message_handler(state=FSMOrder.input_comment)
 async def input_comment(message: Message, state: FSMContext):
-
     async with state.proxy() as data:
         data['comment'] = message.text
         order_info = {**data}
+        order_info = await services.create_or_update_order(order_info)
+        result_check = services.check_before_payment(order_info)
+            
+        if result_check:
+            await message.answer(result_check, reply_markup=await services.get_start_menu())
+            await state.finish()
+            return
+        
         await message.answer('Спасибо за Ваш заказ! Оплатите и ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
-        order_info = await services.create_order(order_info)
-        prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
-
-        await message.bot.send_invoice(
-            chat_id=message.chat.id,
-            title='Заказ',
-            description='Покупка товаров в магазине',
-            payload=f"order_pk{order_info['id']}",
-            provider_token=config.PROVIDER_TOKEN,
-            currency='RUB',
-            prices=prices,
-            start_parameter='test',
-        )
+        await order_payment(message, order_info, message.chat.id)
 
     await state.finish()
-
-
-# @dp.message_handler(lambda cq: 'payment_yookassa' in cq.data)
 
 
 # Конец диалога оформления Заказа
@@ -390,23 +372,28 @@ async def get_order_list(message: Message):
 @dp.callback_query_handler(lambda cq: 'order_pk' in cq.data)
 async def get_order(call: CallbackQuery):
     order_pk = call.data.replace('order_pk', '')
-    order_products, order_info = await services.get_order(order_pk, 0)
+    order_products_kb, order_info = await services.get_kb_order_info(order_pk, 0)
 
     if not order_info:
-        await call.message.answer('Данный заказ уже оплачен')
+        await call.message.answer('Данный заказ уже оплачен и помещён в архив.')
         return
 
-    if not order_products:
-        await call.message.answer('Заказ пуст')
+    if not order_products_kb:
+        await call.message.answer('Заказ пуст.')
         return
+
+    order_sum_info = f"{order_info['order_repr']}на сумму {order_info['amount']}"
+    order_status_info = f"Статус заказа: <i>{order_info['status']['repr']}</i>"
+    order_delivery_info = f"Доставка: <i>{order_info['delivery_type']['repr']}</i>"
+    order_type_payment = f"Тип оплаты: <i>{order_info['payment_type']['repr']}</i>"
 
     if order_info:
         await call.message.answer(
-            f"{order_info['order']}на сумму {order_info['amount']}₽\nСтатус заказа: <i>{order_info['status']['repr']}</i>\nДоставка: <i>{order_info['delivery_type']['repr']}</i>\nТип оплаты: <i>{order_info['payment_type']['repr']}</i>\n<strong>Товары в заказе:</strong>"
+            f"{order_sum_info}₽\n{order_status_info}\n{order_delivery_info}\n{order_type_payment}\n<strong>Товары в заказе:</strong>"
         )
 
-    for product in order_products:
-        await call.message.answer(product, reply_markup=order_products[product])
+    for product in order_products_kb:
+        await call.message.answer(product, reply_markup=order_products_kb[product])
 
 
 # Начало диалога удаления товара из заказа
@@ -437,15 +424,12 @@ async def confirm_product(call: CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(lambda cq: 'answer_yes_no1' in cq.data, state=FSMDeleteProductFromOrder.confirm_delete)
 async def confirm_product(call: CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
-        product_cart_info = {
-            'product_pk': data['product_pk'],
-            'order_pk': data['order_pk'],
-            'id_messenger': call.from_user.id
-        }
+        data['id_messenger'] = call.from_user.id
+        product_cart_info = {**data}
+        await services.delete_product_from_cart(product_cart_info)
+        await call.message.answer('Товар удален из заказа', reply_markup=await services.get_start_menu())
 
-    await services.delete_product_from_order(product_cart_info)
     await state.finish()
-    await call.message.answer('Товар удален из заказа', reply_markup=await services.get_start_menu())
 
 
 # Конец диалога удаления товара из заказа
