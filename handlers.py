@@ -29,6 +29,10 @@ class FSMDeleteProductFromOrder(state.StatesGroup):
     confirm_delete = state.State()
 
 
+class FSMPaymentOrder(state.StatesGroup):
+    confirm_payment = state.State()
+
+
 @dp.message_handler(Command(['start', 'help']))
 async def start_message(message: Message):
     await message.answer(text='Добро пожаловать в Маркет Скидок!',
@@ -229,7 +233,7 @@ async def add_product(call: CallbackQuery, state: FSMContext):
                 return
 
             await call.message.answer('Ваш существующий заказ обновлён и его можно оплатить.', reply_markup=await services.get_start_menu())
-            await order_payment(call.message, order_info, id_messenger)
+            await order_payment(call.message, order_info)
             await state.finish()
             return
             # ****************************************************************************************
@@ -290,17 +294,17 @@ async def get_comment(call: CallbackQuery, state: FSMContext):
                 await state.finish()
                 return
 
-            await call.message.answer('Спасибо за Ваш заказ! Оплатите и ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
-            await order_payment(call.message, order_info, call.message.chat.id)
+            await call.message.answer('Спасибо за Ваш заказ! После оплаты ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+            await order_payment(call.message, order_info)
 
         await state.finish()
 
 
-async def order_payment(message: Message, order_info: dict, chat_id: int) -> None:
+async def order_payment(message: Message, order_info: dict) -> None:
     prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
 
     await message.bot.send_invoice(
-        chat_id=chat_id,
+        chat_id=message.chat.id,
         title='Заказ',
         description='Покупка товаров в магазине',
         payload=f"order_pk{order_info['id']}",
@@ -345,8 +349,8 @@ async def input_comment(message: Message, state: FSMContext):
             await state.finish()
             return
         
-        await message.answer('Спасибо за Ваш заказ! Оплатите и ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
-        await order_payment(message, order_info, message.chat.id)
+        await message.answer('Спасибо за Ваш заказ! После оплаты ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+        await order_payment(message, order_info)
 
     await state.finish()
 
@@ -369,9 +373,9 @@ async def get_order_list(message: Message):
 
 
 # Показать неоплаченный заказ покупателя
-@dp.callback_query_handler(lambda cq: 'order_pk' in cq.data)
+@dp.callback_query_handler(lambda cq: 'show_order_pk' in cq.data)
 async def get_order(call: CallbackQuery):
-    order_pk = call.data.replace('order_pk', '')
+    order_pk = call.data.replace('show_order_pk', '')
     order_products_kb, order_info = await services.get_kb_order_info(order_pk, 0)
 
     if not order_info:
@@ -433,4 +437,44 @@ async def confirm_product(call: CallbackQuery, state: FSMContext):
 
 
 # Конец диалога удаления товара из заказа
+# **************************************************************************************************************
+
+
+# Начало диалога оплаты заказа
+# **************************************************************************************************************
+@dp.callback_query_handler(lambda cq: 'payment_for_order' in cq.data, state=None)
+async def start_payment(call: CallbackQuery, state: FSMContext):
+    await call.answer(cache_time=60)
+    await FSMPaymentOrder.confirm_payment.set()
+    param_list = call.data.replace('payment_for_order', '').split(':')
+    order_pk = param_list[0]
+    order_amount = param_list[1]
+    
+    async with state.proxy() as data:
+        data['id'] = order_pk
+        data['amount'] = float(order_amount)
+    
+    await call.message.answer(f'Оплатить заказ на сумму: {order_amount}₽?', reply_markup=await services.get_answer_yes_no_kb())
+
+
+# отказались от оплаты
+@dp.callback_query_handler(lambda cq: 'answer_yes_no0' in cq.data, state=FSMPaymentOrder.confirm_payment)
+async def confirm_product(call: CallbackQuery, state: FSMContext):
+    await state.finish()
+    await call.message.delete()
+    await call.message.answer('Заказ сохранён и позже его можно оплатить или изменить.', reply_markup=await services.get_start_menu())
+
+
+# оплачивают заказ
+@dp.callback_query_handler(lambda cq: 'answer_yes_no1' in cq.data, state=FSMPaymentOrder.confirm_payment)
+async def confirm_product(call: CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        order_info = {**data}
+        await order_payment(call.message, order_info)
+        await call.message.answer('Спасибо за Ваш заказ! После оплаты ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+
+    await state.finish()
+
+
+# Конец диалога оплаты заказа
 # **************************************************************************************************************
