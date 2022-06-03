@@ -28,18 +28,6 @@ def check_before_payment(order_info: dict) -> str:
     return result
 
 
-# получает или создает Корзину пользовтаеля
-async def get_cart_for_user(session: aiohttp.ClientSession) -> dict:
-    cart_info = {}
-    params_get = {'for_anonymous_user': 1}
-
-    async with session.get(f'{config.ADDR_SERV}/api/v1/get_cart_user', params=params_get) as resp:
-        if resp.ok:
-            cart_info = await resp.json()
-
-    return cart_info
-
-
 async def get_order(session: aiohttp.ClientSession,  order_pk: int, paid: int) -> dict:
     order_info = {}
     params_get = {'pk': order_pk, 'paid': paid}
@@ -166,12 +154,10 @@ async def get_delivery_type(session: aiohttp.ClientSession) -> int:
 
 # проверка есть ли в корзине пользователя товары
 async def check_cart(id_messenger: int) -> bool:
-    product_carts = []
+    product_carts = None
 
-    async with aiohttp.ClientSession(headers=HEADERS) as session:
-        cart_info = await get_cart_for_user(session)
-        cart_pk = cart_info.get('id', 0)
-        product_carts = await get_cart_products(session, cart_pk, id_messenger)
+    cart_info = await get_cart_info(id_messenger)
+    product_carts = cart_info['products']
 
     return True if not product_carts else False
 
@@ -351,34 +337,45 @@ async def get_warehouses_kb(product_pk: str, quantity_msg: str) -> InlineKeyboar
     return kb_warehouses
 
 
+async def get_cart_info(id_messenger: int) -> dict:
+    cart_info = {}
+    params_get = {'id_messenger': id_messenger}
+
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with session.get(f'{config.ADDR_SERV}/api/v1/get_cart_info', params=params_get) as resp:
+            if resp.ok:
+                cart_info = await resp.json()
+
+    return cart_info
+
+
 # возвращает данные о товарах в корзине в виде словаря, где ключем является строка с данными о товаре,
 # а значением кнопка действия с этим товаром(например "Удалить")
 async def get_cart(id_messenger: int) -> dict:
     cart_products = {'amount_cart': 0.0}
 
-    async with aiohttp.ClientSession(headers=HEADERS) as session:
-        cart_info = await get_cart_for_user(session)
-        cart_pk = cart_info.get('id', 0)
-        products_in_cart = await get_cart_products(session, cart_pk, id_messenger)
+    cart_info = await get_cart_info(id_messenger)
 
-        for product in products_in_cart:
-            cart_products['amount_cart'] += float(product['amount'])
-            product_info = f"<strong>{product['product']['name']}</strong>\nКоличество: {product['quantity'].split('.')[0]}\nСумма: {product['amount']}₽"
+    products_in_cart = cart_info.get('products', [])
 
-            kb_cart = InlineKeyboardMarkup(row_width=2)
+    for product_row in products_in_cart:
+        cart_products['amount_cart'] += float(product_row['amount'])
+        product_info = f"<strong>{product_row['product']['name']}</strong>\nКоличество: {product_row['quantity'].split('.')[0]}\nСумма: {product_row['amount']}₽"
 
-            info_button = InlineKeyboardButton(
-                text='📦 О товаре',
-                callback_data=f"show_product{product['product']['pk']}"
-            )
-            delete_button = InlineKeyboardButton(
-                text='🚽 Удалить',
-                callback_data=f"delete_product_from_cart{product['product']['pk']}"
-            )
+        kb_cart = InlineKeyboardMarkup(row_width=2)
 
-            kb_cart.add(info_button).insert(delete_button)
+        info_button = InlineKeyboardButton(
+            text='📦 О товаре',
+            callback_data=f"show_product{product_row['product']['pk']}"
+        )
+        delete_button = InlineKeyboardButton(
+            text='🚽 Удалить',
+            callback_data=f"delete_product_from_cart{product_row['product']['pk']}"
+        )
 
-            cart_products[product_info] = kb_cart
+        kb_cart.add(info_button).insert(delete_button)
+
+        cart_products[product_info] = kb_cart
 
     return cart_products
 

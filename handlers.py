@@ -59,7 +59,7 @@ async def show_cart(message: Message):
         if product != 'amount_cart':
             await message.answer(product, reply_markup=cart_info[product])
 
-    await message.answer(f'Общая сумма товаров: {cart_info["amount_cart"]:10.2f}₽')
+    await message.answer(f"Общая сумма товаров: {cart_info['amount_cart']:10.2f}₽")
 
 
 @dp.callback_query_handler(text_contains='cancel')
