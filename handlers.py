@@ -360,7 +360,7 @@ async def input_comment(message: Message, state: FSMContext):
 
 
 # Показать список неоплаченных заказов покупателя
-@dp.message_handler(Command('💼Ваши_заказы'))
+@dp.message_handler(Command('💼Неоплаченные_заказы'))
 async def get_order_list(message: Message):
     kb_orders = await services.get_kb_order_list(message.from_user.id, 0)
 
@@ -369,18 +369,29 @@ async def get_order_list(message: Message):
         await message.answer('Неоплаченных заказов нет')
         return
 
-    await message.answer('Ваши заказы:', reply_markup=kb_orders)
+    await message.answer('Ваши неоплаченные заказы:', reply_markup=kb_orders)
 
 
-# Показать неоплаченный заказ покупателя
+# Показать список оплаченных заказов покупателя
+@dp.message_handler(Command('💼💰Оплаченные_заказы'))
+async def get_order_list(message: Message):
+    kb_orders = await services.get_kb_order_list(message.from_user.id, 1)
+
+    # Если заказов не найдено, то в словаре будет всего одна кнопка "Отмена"
+    if len(kb_orders.values['inline_keyboard']) == 1:
+        await message.answer('Оплаченных заказов нет')
+        return
+
+    await message.answer('Ваши оплаченные заказы:', reply_markup=kb_orders)
+
+
+# Показать заказ покупателя
 @dp.callback_query_handler(lambda cq: 'show_order_pk' in cq.data)
 async def get_order(call: CallbackQuery):
-    order_pk = call.data.replace('show_order_pk', '')
-    order_products_kb, order_info = await services.get_kb_order_info(order_pk, 0)
-
-    if not order_info:
-        await call.message.answer('Данный заказ уже оплачен и помещён в архив.')
-        return
+    param_list = call.data.replace('show_order_pk', '').split(':')
+    order_pk = param_list[0]
+    paid = int(param_list[1]) if param_list[1].isdigit() else 0
+    order_products_kb, order_info = await services.get_kb_order_info(order_pk, paid)
 
     if not order_products_kb:
         await call.message.answer('Заказ пуст.')

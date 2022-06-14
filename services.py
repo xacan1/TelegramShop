@@ -167,15 +167,17 @@ async def check_cart(id_messenger: int) -> bool:
 
 
 async def get_start_menu() -> ReplyKeyboardMarkup:
-    kb_start = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb_start = ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
     kb_menu_btn_select = KeyboardButton(text='/📦Товары')
     kb_menu_btn_cart = KeyboardButton(text='/🛒Корзина')
     kb_menu_btn_order = KeyboardButton(text='/🧾Заказ')
-    kb_menu_btn_order_list = KeyboardButton(text='/💼Ваши_заказы')
+    kb_menu_btn_order_list_unpaid = KeyboardButton(text='/💼Неоплаченные_заказы')
+    kb_menu_btn_order_list_paid = KeyboardButton(text='/💼💰Оплаченные_заказы')
     kb_start.add(kb_menu_btn_select)
     kb_start.insert(kb_menu_btn_cart)
     kb_start.insert(kb_menu_btn_order)
-    kb_start.insert(kb_menu_btn_order_list)
+    kb_start.add(kb_menu_btn_order_list_unpaid)
+    kb_start.add(kb_menu_btn_order_list_paid)
 
     return kb_start
 
@@ -446,7 +448,7 @@ async def get_kb_order_list(id_messenger: int, paid: int) -> InlineKeyboardMarku
 
         order_button = InlineKeyboardButton(
             text=text_order,
-            callback_data=f'show_order_pk{order_pk}'
+            callback_data=f'show_order_pk{order_pk}:{paid}'
         )
         kb_orders.add(order_button)
 
@@ -474,8 +476,10 @@ async def get_order_info(order_pk: str, paid: int) -> dict:
         async with session.get(f'{config.ADDR_SERV}/api/v1/get_order_info', params=params_get) as resp:
             if resp.ok:
                 order_info = await resp.json()
-                date_order = datetime.strptime(order_info['time_update'], '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%d.%m.%Y')
-                order_info['order_repr'] = f"<strong>Заказ №{order_info['id']} от {date_order}\n</strong>"
+
+                if order_info:
+                    date_order = datetime.strptime(order_info['time_update'], '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%d.%m.%Y')
+                    order_info['order_repr'] = f"<strong>Заказ №{order_info['id']} от {date_order}\n</strong>"
 
     return order_info
 
@@ -507,8 +511,8 @@ async def get_kb_order_info(order_pk: str, paid: int) -> tuple[dict, dict]:
 
         order_products_kb[product_info] = kb_cart
 
-    # если товары есть, то к последнему товару добавим кнопку оплаты всего заказа
-    if order_products_kb:
+    # если товары есть и он не оплачен, то к последнему товару добавим кнопку оплаты всего заказа
+    if order_products_kb and not paid:
         amount = order_info.get('amount', 0)
         payment_button = InlineKeyboardButton(
             text=f'💳Оплатить {amount}₽',
