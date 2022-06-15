@@ -38,7 +38,7 @@ class FSMPaymentOrder(state.StatesGroup):
 
 @dp.message_handler(Command(['start', 'help']))
 async def start_message(message: Message):
-    await message.answer(text='Добро пожаловать в Маркет Скидок! Наш магазин работает только на доставку, приятных покупок.',
+    await message.answer(text='Добро пожаловать в Маркет Скидок! Наш магазин работает только на доставку. Приятных покупок.',
                          reply_markup=await services.get_start_menu())
 
 
@@ -266,7 +266,6 @@ async def input_last_name(message: Message, state: FSMContext):
 
     await FSMOrder.next()
     await message.answer('Укажите название вашего населённого пункта:', reply_markup=ReplyKeyboardRemove())
-    # await message.answer('<strong>Отправьте свой номер нажатием на специальную кнопку внизу экрана</strong>', reply_markup=await services.get_contact_kb())
 
 
 # Ловим название города
@@ -451,10 +450,11 @@ async def get_order(call: CallbackQuery):
     order_status_info = f"Статус заказа: <i>{order_info['status']['repr']}</i>"
     order_delivery_info = f"Способ получения: <i>{order_info['delivery_type']['repr']}</i>"
     order_type_payment = f"Тип оплаты: <i>{order_info['payment_type']['repr']}</i>"
+    order_address = f"Адрес доставки: <i>{order_info['address']}</i>"
 
     if order_info:
         await call.message.answer(
-            f"{order_sum_info}₽\n{order_status_info}\n{order_delivery_info}\n{order_type_payment}\n<strong>Товары в заказе:</strong>"
+            f"{order_sum_info}₽\n{order_status_info}\n{order_delivery_info}\n{order_type_payment}\n{order_address}\n<strong>Товары в заказе:</strong>"
         )
 
     for product in order_products_kb:
