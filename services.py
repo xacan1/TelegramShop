@@ -116,9 +116,10 @@ async def get_order_products(session: aiohttp.ClientSession, order_pk: str) -> l
     return product_order
 
 
-async def get_status(session: aiohttp.ClientSession) -> int:
+#  получает pk статуса по представлению
+async def get_status(session: aiohttp.ClientSession, repr: str = '', for_bot: int = 1) -> int:
     status_pk = 0
-    params_get = {'for_bot': 1}
+    params_get = {'repr': repr, 'for_bot': for_bot}
 
     async with session.get(f'{config.ADDR_SERV}/api/v1/statuses', params=params_get) as resp:
         if resp.ok:
@@ -502,7 +503,7 @@ async def get_kb_order_info(order_pk: str, paid: int) -> tuple[dict, dict]:
         )
         kb_cart.add(info_button)
 
-        if order_info['status']['repr'] == 'Новый заказ':
+        if not order_info['paid']:
             delete_button = InlineKeyboardButton(
                 text='🚽 Удалить',
                 callback_data=f"delete_product_from_order{product_row['product']['pk']}:{order_pk}"

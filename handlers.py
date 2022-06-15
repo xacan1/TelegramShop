@@ -481,8 +481,8 @@ async def confirm_product(call: CallbackQuery, state: FSMContext):
 async def confirm_product(call: CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         order_info = {**data}
-        await order_payment(call.message, order_info)
         await call.message.answer('Спасибо за Ваш заказ! После оплаты ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+        await order_payment(call.message, order_info)
 
     await state.finish()
 
