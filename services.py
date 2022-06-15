@@ -185,7 +185,7 @@ async def get_start_menu() -> ReplyKeyboardMarkup:
 
 # Формирует кнопку отправки контакта
 async def get_contact_kb() -> ReplyKeyboardMarkup:
-    kb_contact = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb_contact = ReplyKeyboardMarkup(resize_keyboard=False)
     new_button = KeyboardButton(text='📱 Отправить номер телефона',
                                 request_contact=True)
     kb_contact.add(new_button)

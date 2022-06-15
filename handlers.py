@@ -10,6 +10,9 @@ class FSMOrder(state.StatesGroup):
     ask_about_create_order = state.State()
     input_first_name = state.State()
     input_last_name = state.State()
+    input_city = state.State()
+    input_street = state.State()
+    input_house = state.State()
     input_phone = state.State()
     ask_about_comment = state.State()
     input_comment = state.State()
@@ -35,7 +38,7 @@ class FSMPaymentOrder(state.StatesGroup):
 
 @dp.message_handler(Command(['start', 'help']))
 async def start_message(message: Message):
-    await message.answer(text='Добро пожаловать в Маркет Скидок!',
+    await message.answer(text='Добро пожаловать в Маркет Скидок! Наш магазин работает только на доставку, приятных покупок.',
                          reply_markup=await services.get_start_menu())
 
 
@@ -262,10 +265,56 @@ async def input_last_name(message: Message, state: FSMContext):
         data['last_name'] = message.text
 
     await FSMOrder.next()
-    await message.answer('<strong>Отправьте свой номер нажатием на специальную кнопку внизу экрана</strong>', reply_markup=await services.get_contact_kb())
+    await message.answer('Укажите название вашего населённого пункта:', reply_markup=ReplyKeyboardRemove())
+    # await message.answer('<strong>Отправьте свой номер нажатием на специальную кнопку внизу экрана</strong>', reply_markup=await services.get_contact_kb())
 
 
-# Ловим третий ответ
+# Ловим название города
+@dp.message_handler(state=FSMOrder.input_city)
+async def input_last_name(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        if len(message.text.strip()) < 3:
+            await message.answer('Вы ввели слишком короткое название. Укажите верное название вашего населённого пункта:', reply_markup=ReplyKeyboardRemove())
+            await state.set_state(FSMOrder.input_city)
+            return
+
+        data['address'] = f'Город: {message.text}'
+
+    await FSMOrder.next()
+    await message.answer('Укажите название улицы:', reply_markup=ReplyKeyboardRemove())
+
+
+# Ловим название улицы
+@dp.message_handler(state=FSMOrder.input_street)
+async def input_last_name(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        if len(message.text.strip()) < 5:
+            await message.answer('Вы ввели слишком короткое название. Укажите верное название вашей улицы:', reply_markup=ReplyKeyboardRemove())
+            await state.set_state(FSMOrder.input_street)
+            return
+
+        data['address'] += f', улица: {message.text}'
+
+    await FSMOrder.next()
+    await message.answer('Укажите номер дома:', reply_markup=ReplyKeyboardRemove())
+
+
+# Ловим номер дома
+@dp.message_handler(state=FSMOrder.input_house)
+async def input_last_name(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        if len(message.text.strip()) < 1:
+            await message.answer('Вы не указали номер дома. Укажите верный номер вашего дома:', reply_markup=ReplyKeyboardRemove())
+            await state.set_state(FSMOrder.input_house)
+            return
+
+        data['address'] += f', дом: {message.text}'
+
+    await FSMOrder.next()
+    await message.answer('<strong>Отправьте свой номер телефона нажатием на БОЛЬШУЮ кнопку внизу экрана</strong>', reply_markup=await services.get_contact_kb())
+
+
+# Ловим контактные данные
 @dp.message_handler(content_types=['contact'], state=FSMOrder.input_phone)
 async def get_contact(message: Message, state: FSMContext):
     async with state.proxy() as data:
@@ -273,6 +322,7 @@ async def get_contact(message: Message, state: FSMContext):
         data['id_messenger'] = message.contact.user_id
 
     await FSMOrder.next()
+    await message.answer('Почти готово!', reply_markup=await services.get_start_menu())
     await message.answer('Желаете оставить комментарий к заказу?', reply_markup=await services.get_answer_yes_no_kb())
 
 
@@ -335,7 +385,7 @@ async def process_pay(message: Message):
         await message.answer('Оплата прошла успешно!', reply_markup=await services.get_start_menu())
 
 
-# Ловим последний ответ, если он есть
+# Ловим комментарий, если он есть
 @dp.message_handler(state=FSMOrder.input_comment)
 async def input_comment(message: Message, state: FSMContext):
     async with state.proxy() as data:
@@ -399,7 +449,7 @@ async def get_order(call: CallbackQuery):
 
     order_sum_info = f"{order_info['order_repr']}на сумму {order_info['amount']}"
     order_status_info = f"Статус заказа: <i>{order_info['status']['repr']}</i>"
-    order_delivery_info = f"Доставка: <i>{order_info['delivery_type']['repr']}</i>"
+    order_delivery_info = f"Способ получения: <i>{order_info['delivery_type']['repr']}</i>"
     order_type_payment = f"Тип оплаты: <i>{order_info['payment_type']['repr']}</i>"
 
     if order_info:
