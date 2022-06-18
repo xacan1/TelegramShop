@@ -167,18 +167,27 @@ async def check_cart(id_messenger: int) -> bool:
 # *******************************************************************************************
 
 
-async def get_start_menu() -> ReplyKeyboardMarkup:
-    kb_start = ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-    kb_menu_btn_select = KeyboardButton(text='/📦Товары')
-    kb_menu_btn_cart = KeyboardButton(text='/🛒Корзина')
-    kb_menu_btn_order = KeyboardButton(text='/🧾Заказ')
-    kb_menu_btn_order_list_unpaid = KeyboardButton(text='/💼Неоплаченные_заказы')
-    kb_menu_btn_order_list_paid = KeyboardButton(text='/💼💰Оплаченные_заказы')
+async def get_start_menu(id_messenger: int = 0) -> ReplyKeyboardMarkup:
+    cart_quantity = ''
+
+    if id_messenger:
+        cart_info = await get_cart_info(id_messenger)
+        count_products = len(cart_info.get('products', []))
+
+        if count_products:
+            cart_quantity = f"({count_products})"
+
+    kb_start = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    kb_menu_btn_select = KeyboardButton(text='📦Товары')
+    kb_menu_btn_cart = KeyboardButton(text=f'🛒Корзина{cart_quantity}')
+    kb_menu_btn_order = KeyboardButton(text='🧾Оформить заказ')
+    kb_menu_btn_order_list_unpaid = KeyboardButton(text='💼Неоплаченные заказы')
+    kb_menu_btn_order_list_paid = KeyboardButton(text='💼💰Оплаченные заказы')
     kb_start.add(kb_menu_btn_select)
     kb_start.insert(kb_menu_btn_cart)
-    kb_start.insert(kb_menu_btn_order)
+    kb_start.add(kb_menu_btn_order)
     kb_start.add(kb_menu_btn_order_list_unpaid)
-    kb_start.add(kb_menu_btn_order_list_paid)
+    kb_start.insert(kb_menu_btn_order_list_paid)
 
     return kb_start
 
@@ -372,7 +381,7 @@ async def get_cart(id_messenger: int) -> dict:
             callback_data=f"show_product{product_row['product']['pk']}"
         )
         delete_button = InlineKeyboardButton(
-            text='🚽 Удалить',
+            text='🗑️ Удалить',
             callback_data=f"delete_product_from_cart{product_row['product']['pk']}"
         )
 
@@ -505,7 +514,7 @@ async def get_kb_order_info(order_pk: str, paid: int) -> tuple[dict, dict]:
 
         if not order_info['paid']:
             delete_button = InlineKeyboardButton(
-                text='🚽 Удалить',
+                text='🗑️ Удалить',
                 callback_data=f"delete_product_from_order{product_row['product']['pk']}:{order_pk}"
             )
             kb_cart.insert(delete_button)

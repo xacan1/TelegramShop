@@ -39,16 +39,17 @@ class FSMPaymentOrder(state.StatesGroup):
 @dp.message_handler(Command(['start', 'help']))
 async def start_message(message: Message):
     await message.answer(text='Добро пожаловать в Маркет Скидок! Наш магазин работает только на доставку. Приятных покупок.',
-                         reply_markup=await services.get_start_menu())
+                         reply_markup=await services.get_start_menu(message.from_user.id))
 
 
-@dp.message_handler(Command('📦Товары'))
+@dp.message_handler(Text('📦Товары'))
 async def show_products(message: Message):
     kb_categories = await services.get_categories()
     await message.answer('Выберите категорию товара:', reply_markup=kb_categories)
 
 
-@dp.message_handler(Command('🛒Корзина'))
+# @dp.message_handler(Text('🛒Корзина'))
+@dp.message_handler(lambda msg: '🛒Корзина' in msg.text)
 async def show_cart(message: Message):
     cart_info = await services.get_cart(message.from_user.id)
 
@@ -155,7 +156,7 @@ async def input_warehouse(call: CallbackQuery, state: FSMContext):
         # пишем данные в БД корзины и словареподобный объект <class 'aiogram.dispatcher.storage.FSMContextProxy'> легко распаковывается в обычный словарь
         product_cart_new = {**data}
         await services.add_product_to_cart(product_cart_new)
-        await call.message.answer('Товар добавлен в корзину', reply_markup=await services.get_start_menu())
+        await call.message.answer('Товар добавлен в корзину', reply_markup=await services.get_start_menu(call.from_user.id))
 
     await state.finish()
 
@@ -183,7 +184,7 @@ async def delete_product_from_cart(call: CallbackQuery, state: FSMContext):
 async def confirm_product(call: CallbackQuery, state: FSMContext):
     await state.finish()
     await call.message.delete()
-    await call.message.answer('Товар остался в корзине', reply_markup=await services.get_start_menu())
+    await call.message.answer('Товар остался в корзине', reply_markup=await services.get_start_menu(call.from_user.id))
 
 
 @dp.callback_query_handler(lambda cq: 'answer_yes_no1' in cq.data, state=FSMDeleteProductToCart.confirm_delete)
@@ -192,7 +193,7 @@ async def confirm_product(call: CallbackQuery, state: FSMContext):
         data['id_messenger'] = call.from_user.id
         product_cart_info = {**data}
         await services.delete_product_from_cart(product_cart_info)
-        await call.message.answer('Товар удален из корзины', reply_markup=await services.get_start_menu())
+        await call.message.answer('Товар удален из корзины', reply_markup=await services.get_start_menu(call.from_user.id))
     
     await state.finish()
 
@@ -203,7 +204,7 @@ async def confirm_product(call: CallbackQuery, state: FSMContext):
 
 # Начало диалога оформления Заказа через машинные состояния
 # **************************************************************************************************************
-@dp.message_handler(Command('🧾Заказ'), state=None)
+@dp.message_handler(Text('🧾Оформить заказ'), state=None)
 async def ask_about_create_order(message: Message):
     cart_empty = await services.check_cart(message.from_user.id)
 
@@ -231,11 +232,11 @@ async def add_product(call: CallbackQuery, state: FSMContext):
             result_check = services.check_before_payment(order_info)
             
             if result_check:
-                await call.message.answer(result_check, reply_markup=await services.get_start_menu())
+                await call.message.answer(result_check, reply_markup=await services.get_start_menu(call.from_user.id))
                 await state.finish()
                 return
 
-            await call.message.answer('Ваш существующий заказ обновлён и его можно оплатить.', reply_markup=await services.get_start_menu())
+            await call.message.answer('Ваш существующий заказ обновлён и его можно оплатить.', reply_markup=await services.get_start_menu(call.from_user.id))
             await order_payment(call.message, order_info)
             await state.finish()
             return
@@ -321,7 +322,7 @@ async def get_contact(message: Message, state: FSMContext):
         data['id_messenger'] = message.contact.user_id
 
     await FSMOrder.next()
-    await message.answer('Почти готово!', reply_markup=await services.get_start_menu())
+    await message.answer('Почти готово!', reply_markup=await services.get_start_menu(message.from_user.id))
     await message.answer('Желаете оставить комментарий к заказу?', reply_markup=await services.get_answer_yes_no_kb())
 
 
@@ -339,11 +340,11 @@ async def get_comment(call: CallbackQuery, state: FSMContext):
             result_check = services.check_before_payment(order_info)
             
             if result_check:
-                await call.message.answer(result_check, reply_markup=await services.get_start_menu())
+                await call.message.answer(result_check, reply_markup=await services.get_start_menu(call.from_user.id))
                 await state.finish()
                 return
 
-            await call.message.answer('Спасибо за Ваш заказ! После оплаты ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+            await call.message.answer('Спасибо за Ваш заказ! После оплаты ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu(call.from_user.id))
             await order_payment(call.message, order_info)
 
         await state.finish()
@@ -409,7 +410,7 @@ async def input_comment(message: Message, state: FSMContext):
 
 
 # Показать список неоплаченных заказов покупателя
-@dp.message_handler(Command('💼Неоплаченные_заказы'))
+@dp.message_handler(Text('💼Неоплаченные заказы'))
 async def get_order_list(message: Message):
     kb_orders = await services.get_kb_order_list(message.from_user.id, 0)
 
@@ -422,7 +423,7 @@ async def get_order_list(message: Message):
 
 
 # Показать список оплаченных заказов покупателя
-@dp.message_handler(Command('💼💰Оплаченные_заказы'))
+@dp.message_handler(Text('💼💰Оплаченные заказы'))
 async def get_order_list(message: Message):
     kb_orders = await services.get_kb_order_list(message.from_user.id, 1)
 
@@ -483,7 +484,7 @@ async def delete_product_from_cart(call: CallbackQuery, state: FSMContext):
 async def confirm_product(call: CallbackQuery, state: FSMContext):
     await state.finish()
     await call.message.delete()
-    await call.message.answer('Товар остался в заказе', reply_markup=await services.get_start_menu())
+    await call.message.answer('Товар остался в заказе', reply_markup=await services.get_start_menu(call.from_user.id))
 
 
 @dp.callback_query_handler(lambda cq: 'answer_yes_no1' in cq.data, state=FSMDeleteProductFromOrder.confirm_delete)
@@ -492,7 +493,7 @@ async def confirm_product(call: CallbackQuery, state: FSMContext):
         data['id_messenger'] = call.from_user.id
         product_cart_info = {**data}
         await services.delete_product_from_cart(product_cart_info)
-        await call.message.answer('Товар удален из заказа', reply_markup=await services.get_start_menu())
+        await call.message.answer('Товар удален из заказа', reply_markup=await services.get_start_menu(call.from_user.id))
 
     await state.finish()
 
@@ -523,7 +524,7 @@ async def start_payment(call: CallbackQuery, state: FSMContext):
 async def confirm_product(call: CallbackQuery, state: FSMContext):
     await state.finish()
     await call.message.delete()
-    await call.message.answer('Заказ сохранён и позже его можно оплатить или изменить.', reply_markup=await services.get_start_menu())
+    await call.message.answer('Заказ сохранён и позже его можно оплатить или изменить.', reply_markup=await services.get_start_menu(call.from_user.id))
 
 
 # оплачивают заказ
@@ -531,7 +532,7 @@ async def confirm_product(call: CallbackQuery, state: FSMContext):
 async def confirm_product(call: CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         order_info = {**data}
-        await call.message.answer('Спасибо за Ваш заказ! После оплаты ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu())
+        await call.message.answer('Спасибо за Ваш заказ! После оплаты ожидайте звонка от сотрудника магазина.', reply_markup=await services.get_start_menu(call.from_user.id))
         await order_payment(call.message, order_info)
 
     await state.finish()
