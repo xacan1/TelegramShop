@@ -289,23 +289,26 @@ async def get_product_list(category_pk: str) -> InlineKeyboardMarkup:
 # выводит карточку товара и предложение добавить в корзину
 async def get_product_info(product_pk: str) -> tuple[InlineKeyboardMarkup, str, str]:
     async with aiohttp.ClientSession(headers=HEADERS) as session:
+        kb_product = InlineKeyboardMarkup(row_width=1)
         product_info = await get_product_by_pk(session, product_pk)
         url_photo = product_info.get('photo', '')
         price = product_info.get('price', 0.00)
         stock_products = product_info.get('get_stock_product', [])
         info = f"{product_info.get('name', '')}\n----------\nналичие:\n"
 
-        for stock in stock_products:
-            info += f"{stock['warehouse']['city']} - {stock['stock'].split('.')[0]} шт.\n"
+        if stock_products:
+            for stock in stock_products:
+                info += f"{stock['warehouse']['city']} - {stock['stock'].split('.')[0]} шт.\n"
 
-        info += f'Цена: {price}₽'
+            info += f'Цена: {price}₽'
 
-        kb_product = InlineKeyboardMarkup(row_width=1)
-        new_button = InlineKeyboardButton(
-            text='🛒 Добавить в корзину',
-            callback_data=f'add_product_to_cart{product_pk}'
-        )
-        kb_product.add(new_button)
+            new_button = InlineKeyboardButton(
+                text='🛒 Добавить в корзину',
+                callback_data=f'add_product_to_cart{product_pk}'
+            )
+            kb_product.add(new_button)
+        else:
+            info += 'нет в наличии'
 
     return kb_product, info, url_photo
 
