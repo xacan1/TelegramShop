@@ -38,7 +38,7 @@ class FSMPaymentOrder(state.StatesGroup):
 
 @dp.message_handler(Command(['start', 'help']))
 async def start_message(message: Message):
-    await message.answer(text='Добро пожаловать в Маркет Скидок! Наш магазин работает только на доставку. Приятных покупок.',
+    await message.answer(text='🤖: "Добро пожаловать в Маркет Скидок! Наш магазин работает только на доставку. Приятных покупок."',
                          reply_markup=await services.get_start_menu(message.from_user.id))
 
 
