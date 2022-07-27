@@ -351,18 +351,21 @@ async def get_comment(call: CallbackQuery, state: FSMContext):
 
 
 async def order_payment(message: Message, order_info: dict) -> None:
-    prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
+    await message.answer('К сожалению в данный момент онлайн оплата не доступна, в будущем мы подключим её. Вы можете оплатить товар курьеру наличными при получении.', reply_markup=await services.get_start_menu(message.from_user.id))
+    
+    ## Пока что отключим онлайн оплату
+    # prices = [LabeledPrice('Руб', int(order_info['amount']) * 100), ]
 
-    await message.bot.send_invoice(
-        chat_id=message.chat.id,
-        title='Заказ',
-        description='Покупка товаров в магазине',
-        payload=f"order_pk{order_info['id']}",
-        provider_token=config.PROVIDER_TOKEN,
-        currency='RUB',
-        prices=prices,
-        start_parameter='test',
-    )
+    # await message.bot.send_invoice(
+    #     chat_id=message.chat.id,
+    #     title='Заказ',
+    #     description='Покупка товаров в магазине',
+    #     payload=f"order_pk{order_info['id']}",
+    #     provider_token=config.PROVIDER_TOKEN,
+    #     currency='RUB',
+    #     prices=prices,
+    #     start_parameter='test',
+    # )
 
 
 # Проверяет наличие товара на складе для проведения платежа по номеру транзакии pre_checkout_query.id
