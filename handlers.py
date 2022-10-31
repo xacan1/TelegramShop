@@ -227,7 +227,7 @@ async def add_product(call: CallbackQuery, state: FSMContext):
 
         if orders:
             order_info = orders[0]
-            order_info['status_pk'] = 1
+            # order_info['status_pk'] = 1 # статус определит сам бэкенд сайта
             order_info = await services.create_or_update_order(order_info)
             result_check = services.check_before_payment(order_info)
             
