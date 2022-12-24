@@ -17,12 +17,12 @@ HEADERS = {
 def check_before_payment(order_info: dict) -> str:
     result = ''
 
-    if order_info['amount'] < 1:
-        result = 'Заказ с нулевой суммой. Добавьте другой товар.'
-        return result
-
     if 'error' in order_info:
         result = 'На сервере произошел сбой. Мы работаем над исправлением.'
+        return result
+
+    if order_info.get('amount', 0) < 1:
+        result = 'Заказ с нулевой суммой. Добавьте другой товар.'
         return result
 
     return result
@@ -117,9 +117,9 @@ async def get_order_products(session: aiohttp.ClientSession, order_pk: str) -> l
 
 
 #  получает pk статуса по представлению
-async def get_status(session: aiohttp.ClientSession, repr: str = '', for_bot: int = 1) -> int:
+async def get_status(session: aiohttp.ClientSession, name: str = '', for_bot: int = 1) -> int:
     status_pk = 0
-    params_get = {'repr': repr, 'for_bot': for_bot}
+    params_get = {'name': name, 'for_bot': for_bot}
 
     async with session.get(f'{config.ADDR_SERV}/api/v1/statuses', params=params_get) as resp:
         if resp.ok:
@@ -237,6 +237,14 @@ async def get_categories(category_pk: int = 0) -> InlineKeyboardMarkup:
             categories = await resp.json()
             kb_categories = InlineKeyboardMarkup(row_width=1)
 
+            if 'detail' in categories:
+                new_button = InlineKeyboardButton(
+                    text=categories['detail'],
+                    callback_data=f'category_nested_pk'
+                )
+                kb_categories.add(new_button)
+                return kb_categories
+
             for category in categories:
                 subcategories = category.get('nested_category', [])
                 category_pk = category.get('pk', ' ')
@@ -295,6 +303,12 @@ async def get_product_info(product_pk: str) -> tuple[InlineKeyboardMarkup, str, 
         product_info = await get_product_by_pk(session, product_pk)
         url_photo = product_info.get('photo', '')
         price = product_info.get('price', 0.00)
+        currency_sign = ''
+
+        if product_info['get_prices']:
+            price_info = product_info['get_prices'][0]
+            currency_sign = price_info['currency']['sign']
+
         stock_products = product_info.get('get_stock_product', [])
         info = f"{product_info.get('name', '')}\n----------\nналичие:\n"
 
@@ -302,7 +316,7 @@ async def get_product_info(product_pk: str) -> tuple[InlineKeyboardMarkup, str, 
             for stock in stock_products:
                 info += f"{stock['warehouse']['city']} - {stock['stock'].split('.')[0]} шт.\n"
 
-            info += f'Цена: {price}₽'
+            info += f'Цена: {price}{currency_sign}'
 
             new_button = InlineKeyboardButton(
                 text='🛒 Добавить в корзину',
@@ -372,12 +386,14 @@ async def get_cart(id_messenger: int) -> dict:
     cart_products = {'amount_cart': 0.0}
 
     cart_info = await get_cart_info(id_messenger)
+    currency_sign = cart_info['currency']['sign']
+    cart_products['current_sign'] = currency_sign
 
     products_in_cart = cart_info.get('products', [])
 
     for product_row in products_in_cart:
         cart_products['amount_cart'] += float(product_row['amount'])
-        product_info = f"<strong>{product_row['product']['name']}</strong>\nКоличество: {product_row['quantity'].split('.')[0]}\nСумма: {product_row['amount']}₽"
+        product_info = f"<strong>{product_row['product']['name']}</strong>\nКоличество: {product_row['quantity'].split('.')[0]}\nСумма: {product_row['amount']}{currency_sign}"
 
         kb_cart = InlineKeyboardMarkup(row_width=2)
 
@@ -412,7 +428,8 @@ async def add_product_to_cart(product_cart_new: dict) -> None:
 
 # удаляет товар из корзины или заказа, так как строки принадлежат и корзинам и заказам
 async def delete_product_from_cart(product_cart_info: dict) -> None:
-    product_cart_info['product_pk'] = int(product_cart_info.get('product_pk', 0))
+    product_cart_info['product_pk'] = int(
+        product_cart_info.get('product_pk', 0))
     product_cart_info['for_anonymous_user'] = 1
 
     async with aiohttp.ClientSession(headers=HEADERS) as session:
@@ -470,10 +487,10 @@ async def get_kb_order_list(id_messenger: int, paid: int) -> InlineKeyboardMarku
         if not paid:
             amount = order.get('amount', 0)
             payment_button = InlineKeyboardButton(
-                text=f'💳Оплатить {amount}₽',
+                text=f"💳Оплатить {amount}{order['currency']['sign']}",
                 callback_data=f"payment_for_order{order_pk}:{amount}"
             )
-            kb_orders.add(payment_button)        
+            kb_orders.add(payment_button)
 
     button_cancel = InlineKeyboardButton(
         text='Отмена', callback_data='cancel'
@@ -493,7 +510,8 @@ async def get_order_info(order_pk: str, paid: int) -> dict:
                 order_info = await resp.json()
 
                 if order_info:
-                    date_order = datetime.strptime(order_info['time_update'], '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%d.%m.%Y')
+                    date_order = datetime.strptime(
+                        order_info['time_update'], '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%d.%m.%Y')
                     order_info['order_repr'] = f"<strong>Заказ №{order_info['id']} от {date_order}\n</strong>"
 
     return order_info
@@ -504,10 +522,11 @@ async def get_order_info(order_pk: str, paid: int) -> dict:
 async def get_kb_order_info(order_pk: str, paid: int) -> tuple[dict, dict]:
     order_products_kb = {}
     order_info = await get_order_info(order_pk, paid)
+    currency_sign = order_info['currency']['sign']
     products_in_order = order_info.get('products', [])
 
     for product_row in products_in_order:
-        product_info = f"<strong>{product_row['product']['name']}</strong>\nКоличество: {product_row['quantity'].split('.')[0]} на сумму: {product_row['amount']}₽"
+        product_info = f"<strong>{product_row['product']['name']}</strong>\nКоличество: {product_row['quantity'].split('.')[0]} на сумму: {product_row['amount']}{currency_sign}"
 
         kb_cart = InlineKeyboardMarkup(row_width=2)
 
@@ -530,7 +549,7 @@ async def get_kb_order_info(order_pk: str, paid: int) -> tuple[dict, dict]:
     if order_products_kb and not paid:
         amount = order_info.get('amount', 0)
         payment_button = InlineKeyboardButton(
-            text=f'💳Оплатить {amount}₽',
+            text=f"💳Оплатить {amount}{currency_sign}",
             callback_data=f"payment_for_order{order_pk}:{amount}"
         )
         order_products_kb[product_info].add(payment_button)

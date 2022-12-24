@@ -60,10 +60,10 @@ async def show_cart(message: Message):
     await message.answer('Товары в корзине:')
 
     for product in cart_info:
-        if product != 'amount_cart':
+        if product != 'amount_cart' and product != 'current_sign':
             await message.answer(product, reply_markup=cart_info[product])
 
-    await message.answer(f"Общая сумма товаров: {cart_info['amount_cart']:10.2f}₽")
+    await message.answer(f"Общая сумма товаров: {cart_info['amount_cart']:10.2f}{cart_info['current_sign']}")
 
 
 @dp.callback_query_handler(text_contains='cancel')
@@ -450,15 +450,15 @@ async def get_order(call: CallbackQuery):
         await call.message.answer('Заказ пуст.')
         return
 
-    order_sum_info = f"{order_info['order_repr']}на сумму {order_info['amount']}"
-    order_status_info = f"Статус заказа: <i>{order_info['status']['repr']}</i>"
-    order_delivery_info = f"Способ получения: <i>{order_info['delivery_type']['repr']}</i>"
-    order_type_payment = f"Тип оплаты: <i>{order_info['payment_type']['repr']}</i>"
+    order_sum_info = f"{order_info['order_repr']}на сумму {order_info['amount']}{order_info['currency']['sign']}"
+    order_status_info = f"Статус заказа: <i>{order_info['status']['name']}</i>"
+    order_delivery_info = f"Способ получения: <i>{order_info['delivery_type']['name']}</i>"
+    order_type_payment = f"Тип оплаты: <i>{order_info['payment_type']['name']}</i>"
     order_address = f"Адрес доставки: <i>{order_info['address']}</i>"
 
     if order_info:
         await call.message.answer(
-            f"{order_sum_info}₽\n{order_status_info}\n{order_delivery_info}\n{order_type_payment}\n{order_address}\n<strong>Товары в заказе:</strong>"
+            f"{order_sum_info}\n{order_status_info}\n{order_delivery_info}\n{order_type_payment}\n{order_address}\n<strong>Товары в заказе:</strong>"
         )
 
     for product in order_products_kb:
@@ -519,7 +519,7 @@ async def start_payment(call: CallbackQuery, state: FSMContext):
         data['id'] = order_pk
         data['amount'] = float(order_amount)
     
-    await call.message.answer(f'Оплатить заказ на сумму: {order_amount}₽?', reply_markup=await services.get_answer_yes_no_kb())
+    await call.message.answer(f'Оплатить заказ на сумму: {order_amount}?', reply_markup=await services.get_answer_yes_no_kb())
 
 
 # отказались от оплаты
