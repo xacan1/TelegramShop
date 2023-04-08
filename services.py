@@ -30,7 +30,7 @@ def check_before_payment(order_info: dict) -> str:
 
 async def get_order(session: aiohttp.ClientSession,  order_pk: int, paid: int) -> dict:
     order_info = {}
-    params_get = {'pk': order_pk, 'paid': paid}
+    params_get = {'id': order_pk, 'paid': paid}
 
     async with session.get(f'{config.ADDR_SERV}/api/v1/orders/', params=params_get) as resp:
         if resp.ok:
@@ -87,7 +87,7 @@ async def get_cart_product(session: aiohttp.ClientSession, cart_order_pk: int, p
 
             if product_carts:
                 product_cart_info = product_carts[0]
-                product_cart_info['pk'] = product_cart_info.get('id', 0)
+                product_cart_info['id'] = product_cart_info.get('id', 0)
 
     return product_cart_info
 
@@ -247,7 +247,7 @@ async def get_categories(category_pk: int = 0) -> InlineKeyboardMarkup:
 
             for category in categories:
                 subcategories = category.get('nested_category', [])
-                category_pk = category.get('pk', ' ')
+                category_pk = category.get('id', ' ')
 
                 if subcategories:
                     new_button = InlineKeyboardButton(
@@ -280,7 +280,7 @@ async def get_product_list(category_pk: str) -> InlineKeyboardMarkup:
 
             for product in products:
                 name = product.get('name', ' ')
-                product_pk = product.get('pk', ' ')
+                product_pk = product.get('id', ' ')
 
                 new_button = InlineKeyboardButton(
                     text=name,
@@ -361,7 +361,7 @@ async def get_warehouses_kb(product_pk: str, quantity_msg: str) -> InlineKeyboar
 
             new_button = InlineKeyboardButton(
                 text=stock['warehouse']['name'],
-                callback_data=f"warehouse_pk{stock['warehouse']['pk']}"
+                callback_data=f"warehouse_pk{stock['warehouse']['id']}"
             )
             kb_warehouses.add(new_button)
 
@@ -386,6 +386,10 @@ async def get_cart(id_messenger: int) -> dict:
     cart_products = {'amount_cart': 0.0}
 
     cart_info = await get_cart_info(id_messenger)
+
+    if 'currency' not in cart_info:
+        return cart_products
+
     currency_sign = cart_info['currency']['sign']
     cart_products['current_sign'] = currency_sign
 
@@ -399,11 +403,11 @@ async def get_cart(id_messenger: int) -> dict:
 
         info_button = InlineKeyboardButton(
             text='📦 О товаре',
-            callback_data=f"show_product{product_row['product']['pk']}"
+            callback_data=f"show_product{product_row['product']['id']}"
         )
         delete_button = InlineKeyboardButton(
             text='🗑️ Удалить',
-            callback_data=f"delete_product_from_cart{product_row['product']['pk']}"
+            callback_data=f"delete_product_from_cart{product_row['product']['id']}"
         )
 
         kb_cart.add(info_button).insert(delete_button)
@@ -532,14 +536,14 @@ async def get_kb_order_info(order_pk: str, paid: int) -> tuple[dict, dict]:
 
         info_button = InlineKeyboardButton(
             text='📦 О товаре',
-            callback_data=f"show_product{product_row['product']['pk']}"
+            callback_data=f"show_product{product_row['product']['id']}"
         )
         kb_cart.add(info_button)
 
         if not order_info['paid']:
             delete_button = InlineKeyboardButton(
                 text='🗑️ Удалить',
-                callback_data=f"delete_product_from_order{product_row['product']['pk']}:{order_pk}"
+                callback_data=f"delete_product_from_order{product_row['product']['id']}:{order_pk}"
             )
             kb_cart.insert(delete_button)
 
