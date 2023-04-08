@@ -32,7 +32,7 @@ async def get_order(session: aiohttp.ClientSession,  order_pk: int, paid: int) -
     order_info = {}
     params_get = {'pk': order_pk, 'paid': paid}
 
-    async with session.get(f'{config.ADDR_SERV}/api/v1/orders', params=params_get) as resp:
+    async with session.get(f'{config.ADDR_SERV}/api/v1/orders/', params=params_get) as resp:
         if resp.ok:
             orders = await resp.json()
 
@@ -45,7 +45,7 @@ async def get_order(session: aiohttp.ClientSession,  order_pk: int, paid: int) -
 async def get_category_by_pk(session: aiohttp.ClientSession, category_pk: str) -> dict:
     category_info = {}
 
-    async with session.get(f'{config.ADDR_SERV}/api/v1/products/categories/{category_pk}') as resp:
+    async with session.get(f'{config.ADDR_SERV}/api/v1/products/categories/{category_pk}/') as resp:
         if resp.ok:
             category_info = await resp.json()
 
@@ -56,7 +56,7 @@ async def get_category_by_pk(session: aiohttp.ClientSession, category_pk: str) -
 async def get_product_by_pk(session: aiohttp.ClientSession, product_pk: str) -> dict:
     product_info = {}
 
-    async with session.get(f'{config.ADDR_SERV}/api/v1/products/{product_pk}') as resp:
+    async with session.get(f'{config.ADDR_SERV}/api/v1/products/{product_pk}/') as resp:
         if resp.ok:
             product_info = await resp.json()
             all_prices = product_info.get('get_prices', [])
@@ -81,7 +81,7 @@ async def get_cart_product(session: aiohttp.ClientSession, cart_order_pk: int, p
     else:
         params_get['cart'] = cart_order_pk
 
-    async with session.get(f'{config.ADDR_SERV}/api/v1/carts/product_to_cart', params=params_get) as resp:
+    async with session.get(f'{config.ADDR_SERV}/api/v1/carts/products/', params=params_get) as resp:
         if resp.ok:
             product_carts = await resp.json()
 
@@ -97,7 +97,7 @@ async def get_cart_products(session: aiohttp.ClientSession, cart_pk: int, id_mes
     product_carts = []
     params_get = {'cart': cart_pk, 'id_messenger': id_messenger}
 
-    async with session.get(f'{config.ADDR_SERV}/api/v1/carts/product_to_cart', params=params_get) as resp:
+    async with session.get(f'{config.ADDR_SERV}/api/v1/carts/products/', params=params_get) as resp:
         if resp.ok:
             product_carts = await resp.json()
 
@@ -109,7 +109,7 @@ async def get_order_products(session: aiohttp.ClientSession, order_pk: str) -> l
     product_order = []
     params_get = {'order': order_pk}
 
-    async with session.get(f'{config.ADDR_SERV}/api/v1/carts/product_to_cart', params=params_get) as resp:
+    async with session.get(f'{config.ADDR_SERV}/api/v1/carts/products/', params=params_get) as resp:
         if resp.ok:
             product_order = await resp.json()
 
@@ -121,7 +121,7 @@ async def get_status(session: aiohttp.ClientSession, name: str = '', for_bot: in
     status_pk = 0
     params_get = {'name': name, 'for_bot': for_bot}
 
-    async with session.get(f'{config.ADDR_SERV}/api/v1/statuses', params=params_get) as resp:
+    async with session.get(f'{config.ADDR_SERV}/api/v1/statuses/', params=params_get) as resp:
         if resp.ok:
             statuses = await resp.json()
             status_pk = statuses[0]['id']
@@ -133,7 +133,7 @@ async def get_payment_type(session: aiohttp.ClientSession) -> int:
     payment_type_pk = 0
     params_get = {'for_bot': 1}
 
-    async with session.get(f'{config.ADDR_SERV}/api/v1/payment_types', params=params_get) as resp:
+    async with session.get(f'{config.ADDR_SERV}/api/v1/payment_types/', params=params_get) as resp:
         if resp.ok:
             payment_types = await resp.json()
             payment_type_pk = payment_types[0]['id']
@@ -145,7 +145,7 @@ async def get_delivery_type(session: aiohttp.ClientSession) -> int:
     delivery_type_pk = 0
     params_get = {'for_bot': 1}
 
-    async with session.get(f'{config.ADDR_SERV}/api/v1/delivery_types', params=params_get) as resp:
+    async with session.get(f'{config.ADDR_SERV}/api/v1/delivery_types/', params=params_get) as resp:
         if resp.ok:
             delivery_types = await resp.json()
             delivery_type_pk = delivery_types[0]['id']
@@ -233,7 +233,7 @@ async def get_categories(category_pk: int = 0) -> InlineKeyboardMarkup:
         params_get = {'category_pk': category_pk} if category_pk else {
             'top_level_only': 1}
 
-        async with session.get(f'{config.ADDR_SERV}/api/v1/products/categories', params=params_get) as resp:
+        async with session.get(f'{config.ADDR_SERV}/api/v1/products/categories/', params=params_get) as resp:
             categories = await resp.json()
             kb_categories = InlineKeyboardMarkup(row_width=1)
 
@@ -274,7 +274,7 @@ async def get_product_list(category_pk: str) -> InlineKeyboardMarkup:
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         params_get = {'category_pk': category_pk}
 
-        async with session.get(f'{config.ADDR_SERV}/api/v1/products', params=params_get) as resp:
+        async with session.get(f'{config.ADDR_SERV}/api/v1/products/', params=params_get) as resp:
             products = await resp.json()
             kb_products = InlineKeyboardMarkup(row_width=1)
 
@@ -458,7 +458,7 @@ async def get_orders_for_messenger(id_messenger: int, paid: int) -> list[dict]:
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         params_get = {'id_messenger': id_messenger, 'paid': paid}
 
-        async with session.get(f'{config.ADDR_SERV}/api/v1/orders', params=params_get) as resp:
+        async with session.get(f'{config.ADDR_SERV}/api/v1/orders/', params=params_get) as resp:
             if resp.ok:
                 orders = await resp.json()
 
@@ -577,5 +577,5 @@ async def set_order_payment(order_pk: str) -> None:
     order_info = {'paid': 1}
 
     async with aiohttp.ClientSession(headers=HEADERS) as session:
-        async with session.patch(f'{config.ADDR_SERV}/api/v1/orders_update/{order_pk}', json=order_info):
+        async with session.patch(f'{config.ADDR_SERV}/api/v1/orders_update/{order_pk}/', json=order_info):
             pass
